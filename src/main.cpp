@@ -50,7 +50,6 @@ void send_post_request();
 void setup() {
   Serial.begin(9600);                   // initialize serial
   while (!Serial);
-
   Serial.println("LoRa Duplex");
 
   // override the default CS, reset, and IRQ pins (optional)

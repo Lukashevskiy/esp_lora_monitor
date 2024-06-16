@@ -8,7 +8,7 @@ const int csPin = 15;          // LoRa radio chip select
 const int resetPin = 16;       // LoRa radio reset
 const int irqPin = 2;         // change for your board; must be a hardware interrupt pin
 
-const char* ssid = "Камчатка-2";
+const char* ssid = "Kamchates";
 const char* password = "12345678";
 
 WiFiUDP Udp;

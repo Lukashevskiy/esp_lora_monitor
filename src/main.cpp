@@ -1,56 +1,75 @@
+// #include <fmt/format.h>
 #include <ESP8266WiFi.h>
 #include <WiFiUdp.h>
 #include <string>
+#include <string_view>
+#include <unordered_map>
+#include <array>
+
 #include <LoRa.h>
 #include <ESP8266HTTPClient.h>
+#include <ArduinoJson>
 
-const int csPin = 15;          // LoRa radio chip select
-const int resetPin = 16;       // LoRa radio reset
-const int irqPin = 2;         // change for your board; must be a hardware interrupt pin
+constexpr uint8_t BROADCAST = 0xff;
 
-const char* ssid = "Kamchates";
-const char* password = "12345678";
+constexpr uint8_t csPin = 15;          // LoRa radio chip select
+constexpr uint8_t resetPin = 16;       // LoRa radio reset
+constexpr uint8_t irqPin = 2;         // change for your board; must be a hardware interrupt pin
 
-WiFiUDP Udp;
-const char* serverIp = "192.168.4.3";  // IP адрес сервера, он статичен
-unsigned int port = 5000;              // Порт для общения, пусть он совпадает у всех...
+std::string_view ssid = "Kamchates";
+std::string_view password = "12345678";
+
+constexpr std::array<std::string_view, 5> NAMES = {
+  "Медведь", 
+  "Краб", 
+  "Камчатка", 
+  "Hello", 
+  "Некто"
+}; 
+
+/*
+INTERFACE ADDHL
+0xAA - 0
+0xBB - 1
+0xCC - 2
+0xDD - 3
+0xFF - 4
+*/
+// std::unordered_map<uint8_t, std::string_view> ADRESSES{
+//   {0xAA, NAMES[0]},
+//   {0xBB, NAMES[1]},
+//   {0xCC, NAMES[2],
+//   {0xDD, NAMES[3]},
+//   {0xFF, NAMES[4]}
+// };
 
 
-String outgoing;              // outgoing message
 
-byte msgCount = 0;            // count of outgoing messages
-byte localAddress = 0xFF;     // address of this device
-byte destination = 0xFF;      // destination to send to
+std::string_view serverIp = "192.168.4.3";  // IP адрес сервера, он статичен
+constexpr uint16_t port = 5000;              // Порт для общения, пусть он совпадает у всех...
+
+
+std::string outgoing;              // outgoing message
+
+static uint8_t msgCount = 0;                   // count of outgoing messages
+constexpr uint8_t localAddress = BROADCAST; // address of this device
+constexpr uint8_t destination  = BROADCAST; // destination to send to
+
 long lastSendTime = 0;        // last send time
-int interval = 2000;          // interval between sends
+constexpr uint32_t INTERVAL = 2000;          // interval between sends
 
-String get_name(byte sender) {
-  String sender_name = "";
-  switch (sender) {
-    case 0xAA:
-      sender_name = "Медведь";
-      break;
-    case 0xBB:
-      sender_name = "Краб";
-      break;
-    case 0xCC:
-      sender_name = "Камчатка";
-      break;
-    case 0xDD:
-      sender_name = "Hello";
-      break;
-    default:
-      sender_name = "Некто";
-  }
-  return sender_name;
+std::string_view get_name(uint8_t sender){
+  uint8_t base_addr = 0xAA;
+  uint8_t transfer_index = (sender - base_addr) / 0x11;
+  return NAMES[transfer_index];
 }
-void sendMessage(String outgoing);
-void onReceive(int packetSize);
+
+void sendMessage(std::string outgoing);
+void onReceive(size_t packetSize);
 void send_post_request();
 void setup() {
   Serial.begin(9600);                   // initialize serial
   while (!Serial);
-  Serial.println("LoRa Duplex");
 
   // override the default CS, reset, and IRQ pins (optional)
   LoRa.setPins(csPin, resetPin, irqPin);// set CS, reset, IRQ pin
@@ -59,13 +78,12 @@ void setup() {
     Serial.println("LoRa init failed. Check your connections.");
     while (true);                       // if failed, do nothing
   }
-
   Serial.println("LoRa init succeeded.");
   Serial.println("Я " + get_name(localAddress) + ", a это наш чат.");
   
   Serial.setTimeout(5);
 
-  WiFi.begin(ssid, password);
+  WiFi.begin(ssid.data(), password.data());
   Serial.println();
   Serial.print("Подключаемся.");
   while (WiFi.status() != WL_CONNECTED) {
@@ -96,8 +114,8 @@ void send_post_request() {
   http.begin(client, "http://192.168.4.2:5000/temperature/create");
   http.addHeader("Content-Type", "application/json");
 
-  String payload =  "{\"value\":\"" + outgoing + "\"}";
-  int httpCode = http.POST(payload);
+  std::string payload =  "{\"value\":\"" + outgoing + "\"}";
+  uint8_t httpCode = http.POST(payload.c_str());
   
   if (httpCode > 0 && httpCode == HTTP_CODE_OK) {
     Serial.println("POST запрос успешно отправлен");
@@ -111,13 +129,13 @@ void send_post_request() {
 }
 
 
-void sendMessage(String outgoing) {
+void sendMessage(std::string outgoing) {
   LoRa.beginPacket();                   // start packet
   LoRa.write(destination);              // add destination address
   LoRa.write(localAddress);             // add sender address 
   LoRa.write(msgCount);                 // add message ID
   LoRa.write(outgoing.length());        // add payload length
-  LoRa.print(outgoing);                 // add payload
+  LoRa.print(outgoing.c_str());                 // add payload
   LoRa.endPacket();                     // finish packet and send it
   msgCount++;                           // increment message ID
 }
@@ -131,7 +149,7 @@ void onReceive(int packetSize) {
   byte incomingMsgId = LoRa.read();     // incoming msg ID
   byte incomingLength = LoRa.read();    // incoming msg length
 
-  String incoming = "";
+  std::string incoming = "";
 
   while (LoRa.available()) {
     incoming += (char)LoRa.read();
@@ -149,9 +167,9 @@ void onReceive(int packetSize) {
 //  }
 
   // if message is for this device, or broadcast, print details:
-  String sender_name = get_name(sender);
+  std::string_view sender_name = get_name(sender);
 
-  Serial.print(sender_name + ": " + incoming);
+  // Serial.print(sender_name + ": " + incoming);
 //  Serial.println("Sent to: 0x" + String(recipient, HEX));
 //  Serial.println("Message ID: " + String(incomingMsgId));
 //  Serial.println("Message length: " + String(incomingLength));
@@ -161,5 +179,6 @@ void onReceive(int packetSize) {
   //Serial.println();
   outgoing = incoming;
 }
+
 
 
